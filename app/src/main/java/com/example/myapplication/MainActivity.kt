@@ -422,6 +422,9 @@ fun DailyView(
     viewModel: HabitViewModel,
     padding: PaddingValues
 ) {
+    val context = LocalContext.current
+    var quotesEnabled by remember { mutableStateOf(isQuoteServiceRunning(context)) }
+    
     val currentMonth = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
     }
@@ -434,12 +437,35 @@ fun DailyView(
     ) {
         Spacer(modifier = Modifier.height(20.dp))
         
-        Text(
-            text = "Habit Tracker",
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF2C3E50)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Habit Tracker",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2C3E50)
+            )
+            
+            // Quote toggle button
+            IconButton(
+                onClick = {
+                    if (quotesEnabled) {
+                        stopQuoteService(context)
+                    } else {
+                        startQuoteService(context)
+                    }
+                    quotesEnabled = !quotesEnabled
+                }
+            ) {
+                Text(
+                    text = if (quotesEnabled) "💡" else "💤",
+                    fontSize = 24.sp
+                )
+            }
+        }
         
         Text(
             text = currentMonth,
@@ -1584,4 +1610,42 @@ fun TimePickerDialog(
             }
         }
     )
+}
+
+// Helper functions for Quote Service
+fun startQuoteService(context: android.content.Context) {
+    // Check for overlay permission first
+    if (!android.provider.Settings.canDrawOverlays(context)) {
+        // Request overlay permission
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            android.net.Uri.parse("package:${context.packageName}")
+        )
+        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+        context.startActivity(intent)
+        return
+    }
+    
+    val serviceIntent = android.content.Intent(context, QuoteService::class.java)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        context.startForegroundService(serviceIntent)
+    } else {
+        context.startService(serviceIntent)
+    }
+}
+
+fun stopQuoteService(context: android.content.Context) {
+    val serviceIntent = android.content.Intent(context, QuoteService::class.java)
+    context.stopService(serviceIntent)
+}
+
+fun isQuoteServiceRunning(context: android.content.Context): Boolean {
+    val manager = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+    @Suppress("DEPRECATION")
+    for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+        if (QuoteService::class.java.name == service.service.className) {
+            return true
+        }
+    }
+    return false
 }
