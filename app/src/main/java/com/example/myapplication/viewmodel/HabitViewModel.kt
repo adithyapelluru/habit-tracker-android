@@ -13,15 +13,21 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
     private val habitDao = HabitDatabase.getDatabase(application).habitDao()
     val habits: Flow<List<Habit>> = habitDao.getAllHabits()
     
-    fun addHabit(name: String) {
+    fun addHabit(name: String, hour: Int = 9, minute: Int = 0) {
         viewModelScope.launch {
-            habitDao.insertHabit(Habit(name = name))
+            habitDao.insertHabit(Habit(name = name, notificationHour = hour, notificationMinute = minute))
         }
     }
     
     fun deleteHabit(habit: Habit) {
         viewModelScope.launch {
             habitDao.deleteHabit(habit)
+        }
+    }
+    
+    fun updateHabit(habit: Habit, newName: String, newHour: Int, newMinute: Int) {
+        viewModelScope.launch {
+            habitDao.updateHabit(habit.copy(name = newName, notificationHour = newHour, notificationMinute = newMinute))
         }
     }
     

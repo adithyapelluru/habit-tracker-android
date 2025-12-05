@@ -124,7 +124,7 @@ fun HabitTrackerScreen(viewModel: HabitViewModel = viewModel()) {
             "add" -> AddHabitView(
                 onCancel = { currentView = "daily" },
                 onSave = { name, hour, minute ->
-                    viewModel.addHabit(name)
+                    viewModel.addHabit(name, hour, minute)
                     scope.launch {
                         kotlinx.coroutines.delay(500) // Wait for habit to be added
                         val allHabits = habits
@@ -248,6 +248,7 @@ fun MonthlyCalendar(viewModel: HabitViewModel, habits: List<Habit>) {
 
 @Composable
 fun ExpandableHabitCard(habit: Habit, viewModel: HabitViewModel) {
+    val context = LocalContext.current
     var isExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val currentDate = LocalDate.now()
@@ -258,6 +259,7 @@ fun ExpandableHabitCard(habit: Habit, viewModel: HabitViewModel) {
     var completions by remember { mutableStateOf<Set<String>>(emptySet()) }
     var refreshKey by remember { mutableStateOf(0) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
     
     LaunchedEffect(habit.id, refreshKey) {
         val startDate = viewModel.getDateString(firstDayOfMonth)
@@ -278,6 +280,7 @@ fun ExpandableHabitCard(habit: Habit, viewModel: HabitViewModel) {
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { isExpanded = !isExpanded },
+                        onDoubleTap = { showEditDialog = true },
                         onLongPress = { showDeleteDialog = true }
                     )
                 }
@@ -387,6 +390,24 @@ fun ExpandableHabitCard(habit: Habit, viewModel: HabitViewModel) {
             onConfirm = {
                 viewModel.deleteHabit(habit)
                 showDeleteDialog = false
+            }
+        )
+    }
+    
+    if (showEditDialog) {
+        EditHabitDialog(
+            habit = habit,
+            onDismiss = { showEditDialog = false },
+            onConfirm = { newName, newHour, newMinute ->
+                viewModel.updateHabit(habit, newName, newHour, newMinute)
+                NotificationScheduler.scheduleNotification(
+                    context,
+                    habit.id,
+                    newName,
+                    newHour,
+                    newMinute
+                )
+                showEditDialog = false
             }
         )
     }
@@ -603,10 +624,12 @@ fun StreakCard(
     val daysInMonth = selectedDate.lengthOfMonth()
     val startDayOfWeek = firstDayOfMonth.dayOfWeek.value % 7
     
+    val context = LocalContext.current
     var completions by remember { mutableStateOf<Set<String>>(emptySet()) }
     var monthlyStreakCount by remember { mutableStateOf(0) }
     var isExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
     
     LaunchedEffect(habit.id, selectedDate) {
         val startDate = viewModel.getDateString(firstDayOfMonth)
@@ -648,6 +671,7 @@ fun StreakCard(
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { isExpanded = !isExpanded },
+                            onDoubleTap = { showEditDialog = true },
                             onLongPress = { showDeleteDialog = true }
                         )
                     },
@@ -774,6 +798,24 @@ fun StreakCard(
             }
         )
     }
+    
+    if (showEditDialog) {
+        EditHabitDialog(
+            habit = habit,
+            onDismiss = { showEditDialog = false },
+            onConfirm = { newName, newHour, newMinute ->
+                viewModel.updateHabit(habit, newName, newHour, newMinute)
+                NotificationScheduler.scheduleNotification(
+                    context,
+                    habit.id,
+                    newName,
+                    newHour,
+                    newMinute
+                )
+                showEditDialog = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -814,6 +856,105 @@ fun DeleteHabitDialog(
         containerColor = Color.White,
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditHabitDialog(
+    habit: Habit,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int, Int) -> Unit
+) {
+    var habitName by remember { mutableStateOf(habit.name) }
+    var selectedHour by remember { mutableStateOf(habit.notificationHour) }
+    var selectedMinute by remember { mutableStateOf(habit.notificationMinute) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Edit Habit",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                OutlinedTextField(
+                    value = habitName,
+                    onValueChange = { habitName = it },
+                    label = { Text("Habit Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF5DADE2),
+                        unfocusedBorderColor = Color(0xFFE8E8E8)
+                    )
+                )
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFEEEEEE))
+                        .clickable { showTimePicker = true }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Notification Time",
+                        fontSize = 14.sp,
+                        color = Color(0xFF5F6C6D)
+                    )
+                    Text(
+                        text = String.format("%02d:%02d", selectedHour, selectedMinute),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2C3E50)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { 
+                    if (habitName.isNotBlank()) {
+                        onConfirm(habitName.trim(), selectedHour, selectedMinute)
+                    }
+                },
+                enabled = habitName.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF5DADE2)
+                )
+            ) {
+                Text("Save", color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        containerColor = Color.White,
+        shape = RoundedCornerShape(16.dp)
+    )
+    
+    if (showTimePicker) {
+        TimePickerDialog(
+            initialHour = selectedHour,
+            initialMinute = selectedMinute,
+            onDismiss = { showTimePicker = false },
+            onConfirm = { hour, minute ->
+                selectedHour = hour
+                selectedMinute = minute
+                showTimePicker = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -921,6 +1062,7 @@ fun WeekDaysHeader() {
 
 @Composable
 fun DailyHabitCard(habit: Habit, viewModel: HabitViewModel) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val today = LocalDate.now()
     val weekDays = remember {
@@ -930,6 +1072,7 @@ fun DailyHabitCard(habit: Habit, viewModel: HabitViewModel) {
     var completions by remember { mutableStateOf<Set<String>>(emptySet()) }
     var refreshKey by remember { mutableStateOf(0) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
     
     LaunchedEffect(habit.id, refreshKey) {
         val startDate = viewModel.getDateString(weekDays.first())
@@ -949,9 +1092,8 @@ fun DailyHabitCard(habit: Habit, viewModel: HabitViewModel) {
                 .fillMaxWidth()
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onLongPress = {
-                            showDeleteDialog = true
-                        }
+                        onTap = { showEditDialog = true },
+                        onLongPress = { showDeleteDialog = true }
                     )
                 }
                 .padding(16.dp),
@@ -1000,6 +1142,25 @@ fun DailyHabitCard(habit: Habit, viewModel: HabitViewModel) {
             onConfirm = {
                 viewModel.deleteHabit(habit)
                 showDeleteDialog = false
+            }
+        )
+    }
+    
+    if (showEditDialog) {
+        EditHabitDialog(
+            habit = habit,
+            onDismiss = { showEditDialog = false },
+            onConfirm = { newName, newHour, newMinute ->
+                viewModel.updateHabit(habit, newName, newHour, newMinute)
+                // Reschedule notification with new time
+                NotificationScheduler.scheduleNotification(
+                    context,
+                    habit.id,
+                    newName,
+                    newHour,
+                    newMinute
+                )
+                showEditDialog = false
             }
         )
     }
