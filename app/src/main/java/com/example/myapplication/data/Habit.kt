@@ -8,5 +8,7 @@ data class Habit(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
     val name: String,
+    val notificationHour: Int = 9,
+    val notificationMinute: Int = 0,
     val createdAt: Long = System.currentTimeMillis()
 )
